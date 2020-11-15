@@ -104,6 +104,8 @@ impl<'a> Inner<'a> {
                 self.add_storage(value)
             }
         } else {
+            mem::forget(value);
+
             // We can use a dangling pointer for zero sized types, as long as it's property
             // aligned and non-null.
             Some(align as *mut T)
@@ -206,7 +208,20 @@ fn test_bin() {
 
 #[test]
 fn test_bin_zsts() {
+    use std::cell::Cell;
     use std::marker::PhantomData;
+
+    thread_local! {
+        static DESTRUCTOR_CALLED: Cell<bool> = Cell::new(false);
+    }
+
+    struct Zst;
+    impl Drop for Zst {
+        fn drop(&mut self) {
+            assert!(!DESTRUCTOR_CALLED.with(Cell::get));
+            DESTRUCTOR_CALLED.with(|cell| cell.set(true));
+        }
+    }
 
     let mut bin = Inner::new();
 
@@ -214,8 +229,15 @@ fn test_bin_zsts() {
     bin.add(());
     bin.add(PhantomData::<()>);
     bin.add(PhantomData::<Vec<i64>>);
+    bin.add(Zst);
+
+    assert!(!DESTRUCTOR_CALLED.with(Cell::get));
 
     bin.clear();
+
+    assert!(DESTRUCTOR_CALLED.with(Cell::get));
+
+    DESTRUCTOR_CALLED.with(|cell| cell.set(false));
 }
 
 #[test]
