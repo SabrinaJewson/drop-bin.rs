@@ -130,7 +130,10 @@ fn test_push() {
     assert_eq!(slice.push("3".to_owned()).unwrap(), "3");
     assert_eq!(slice.push("4".to_owned()), Err("4".to_owned()));
 
-    assert_eq!(slice.iter_mut().map(|x| &**x).collect::<Vec<_>>(), ["1", "2", "3"]);
+    assert_eq!(
+        slice.iter_mut().map(|x| &**x).collect::<Vec<_>>(),
+        ["1", "2", "3"]
+    );
     assert_eq!(slice.drain().collect::<Vec<_>>(), ["1", "2", "3"]);
 
     let v1 = slice.push("1".to_owned()).unwrap();

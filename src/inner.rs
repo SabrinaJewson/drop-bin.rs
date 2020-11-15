@@ -1,11 +1,11 @@
-use std::mem::{self, MaybeUninit};
-use std::marker::PhantomData;
 use std::cmp::max;
+use std::marker::PhantomData;
+use std::mem::{self, MaybeUninit};
 use std::ptr;
 
 use try_mutex::TryMutex;
 
-use crate::{ConcurrentVec, ConcurrentList};
+use crate::{ConcurrentList, ConcurrentVec};
 
 type Destructor = unsafe fn(*mut ());
 
@@ -124,11 +124,7 @@ impl<'a> Inner<'a> {
                 // The initial storage capacity will be 1024 bytes
                 1024,
                 // Storage capacity will double after that
-                |s| {
-                    s.capacity
-                        .checked_mul(2)
-                        .unwrap_or(s.capacity)
-                },
+                |s| s.capacity.checked_mul(2).unwrap_or(s.capacity),
             ),
         );
         let mut bytes = Vec::with_capacity(capacity);
@@ -192,7 +188,10 @@ fn test_bin() {
 
     bin.add(253_u16);
     assert_eq!(bin.destructors.len(), 2);
-    assert_eq!(unsafe { *(bin.destructors.iter_mut().next().unwrap().0 as *const u16) }, 253);
+    assert_eq!(
+        unsafe { *(bin.destructors.iter_mut().next().unwrap().0 as *const u16) },
+        253
+    );
 
     bin.add(Box::new(6));
     assert_eq!(bin.destructors.len(), 3);

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 type Heavy = HashMap<usize, Vec<usize>>;
 
@@ -10,21 +10,13 @@ fn make_heavy() -> Heavy {
 
 fn drop_expensive(c: &mut Criterion) {
     c.bench_function("drop normal", |b| {
-        b.iter_batched(
-            make_heavy,
-            drop,
-            BatchSize::SmallInput,
-        )
+        b.iter_batched(make_heavy, drop, BatchSize::SmallInput)
     });
 
     c.bench_function("drop bin", |b| {
         let bin = drop_bin::Bin::new();
 
-        b.iter_batched(
-            make_heavy,
-            |heavy| bin.add(heavy),
-            BatchSize::LargeInput,
-        )
+        b.iter_batched(make_heavy, |heavy| bin.add(heavy), BatchSize::LargeInput)
     });
 
     c.bench_function("drop thread", |b| {

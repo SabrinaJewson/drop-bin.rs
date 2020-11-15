@@ -94,9 +94,7 @@ impl<'a> Bin<'a> {
     /// Get the size of the bin in bytes.
     #[must_use]
     pub fn size(&self) -> usize {
-        self.inner
-            .try_read()
-            .map_or(0, |inner| inner.size())
+        self.inner.try_read().map_or(0, |inner| inner.size())
     }
 }
 

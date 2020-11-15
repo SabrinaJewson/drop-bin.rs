@@ -1,4 +1,3 @@
-
 use crate::{ConcurrentList, ConcurrentSlice};
 
 /// A concurrent append-only vector built from a `ConcurrentList<ConcurrentSlice<T>>`.
@@ -21,26 +20,30 @@ impl<T> ConcurrentVec<T> {
             Some(head) => Ok((head, value)),
             None => Err(value),
         }
-            .and_then(|(head, value)| head.push(value))
-            .unwrap_or_else(|value| {
-                let slice = ConcurrentSlice::new(self.data.head().map_or(4, |head| {
-                    let capacity = head.capacity();
-                    capacity.checked_mul(2).unwrap_or(capacity)
-                }));
-                match self.data.push(slice).push(value) {
-                    Ok(value) => value,
-                    Err(_) => unreachable!(),
-                }
-            })
+        .and_then(|(head, value)| head.push(value))
+        .unwrap_or_else(|value| {
+            let slice = ConcurrentSlice::new(self.data.head().map_or(4, |head| {
+                let capacity = head.capacity();
+                capacity.checked_mul(2).unwrap_or(capacity)
+            }));
+            match self.data.push(slice).push(value) {
+                Ok(value) => value,
+                Err(_) => unreachable!(),
+            }
+        })
     }
 
     #[cfg(test)]
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> + '_ {
-        self.data.iter_mut().flat_map(|slice| slice.iter_mut().rev())
+        self.data
+            .iter_mut()
+            .flat_map(|slice| slice.iter_mut().rev())
     }
 
     pub(crate) fn into_iter(self) -> impl Iterator<Item = T> {
-        self.data.into_iter().flat_map(|slice| slice.into_iter().rev())
+        self.data
+            .into_iter()
+            .flat_map(|slice| slice.into_iter().rev())
     }
 
     #[cfg(test)]
