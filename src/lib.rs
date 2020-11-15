@@ -7,12 +7,12 @@
 //! # Example
 //!
 //! ```
-//! let mut bin = drop_bin::Bin::new();
+//! let bin = drop_bin::Bin::new();
 //!
 //! let some_data = "Hello World!".to_owned();
 //! bin.add(some_data);
 //! // `some_data`'s destructor is not run.
-//! 
+//!
 //! bin.clear();
 //! // `some_data`'s destructor has been run.
 //! ```
@@ -23,182 +23,115 @@
     unused_qualifications
 )]
 
-use std::cmp::max;
-use std::marker::PhantomData;
-use std::mem::{self, MaybeUninit};
-use std::ptr;
+use std::sync::atomic::{self, AtomicBool};
 
-type Destructor = unsafe fn(*mut ());
+use try_rwlock::TryRwLock;
+
+mod concurrent_list;
+use concurrent_list::ConcurrentList;
+
+mod concurrent_slice;
+use concurrent_slice::ConcurrentSlice;
+
+mod concurrent_vec;
+use concurrent_vec::ConcurrentVec;
+
+mod inner;
+use inner::Inner;
 
 /// A bin.
 ///
 /// It is cleared when it is dropped.
 #[derive(Debug, Default)]
 pub struct Bin<'a> {
-    /// Pointers to the data and its destructors.
-    destructors: Vec<(*mut (), Destructor)>,
-    /// The backing storage behind the pointers in `destructors`. Each inner `Vec` never
-    /// reallocates, and they double in size each time.
-    data: Vec<Vec<MaybeUninit<u8>>>,
-    invariant_over_lifetime_a: PhantomData<&'a mut &'a ()>,
+    /// The inner data of the bin. If this is locked for writing, the bin is being cleared.
+    inner: TryRwLock<Inner<'a>>,
+    /// Whether the bin needs to be cleared.
+    clear: AtomicBool,
 }
 
 impl<'a> Bin<'a> {
-    // Associated constant as fn pointers aren't allowed in const fn
-    const NEW: Self = Self {
-        destructors: Vec::new(),
-        data: Vec::new(),
-        invariant_over_lifetime_a: PhantomData,
-    };
-
     /// Create a new bin.
     #[must_use]
     pub const fn new() -> Self {
-        Self::NEW
+        Self {
+            inner: TryRwLock::new(Inner::new()),
+            clear: AtomicBool::new(false),
+        }
     }
 
     /// Add a value to the bin.
-    pub fn add<T: 'a>(&mut self, value: T) {
-        let align = mem::align_of::<T>();
-        let size = mem::size_of::<T>();
-
-        let value_ptr = if size > 0 {
-            // The option borrows Self so I can't use combinators
-            #[allow(clippy::option_if_let_else)]
-            // Find a storage that has space for the value.
-            let (storage, value_start_index) = if let Some(x) =
-                self.data.iter_mut().find_map(|storage| {
-                    let storage_end_ptr = storage.as_ptr() as usize + storage.len();
-                    let padding = (align - storage_end_ptr % align) % align;
-
-                    let value_start_index = storage.len().checked_add(padding)?;
-
-                    if value_start_index.checked_add(size)? <= storage.capacity() {
-                        Some((storage, value_start_index))
-                    } else {
-                        None
-                    }
-                }) {
-                x
-            } else {
-                let capacity = max(
-                    match size.checked_add(align) {
-                        Some(x) => x,
-                        None => return,
-                    },
-                    self.data.last().map_or(1024, |v| v.len().checked_mul(2).unwrap_or(v.len())),
-                );
-                self.data.push(Vec::with_capacity(capacity));
-                let storage = self.data.last_mut().unwrap();
-                let value_start_index = (align - storage.as_ptr() as usize % align) % align;
-                (storage, value_start_index)
-            };
-            storage.resize(value_start_index + size, MaybeUninit::uninit());
-
-            let value_ptr = &mut storage[value_start_index] as *mut MaybeUninit<u8>;
-            assert_eq!(value_ptr as usize % align, 0);
-            assert_eq!(storage.len() - value_start_index, size);
-
-            unsafe {
-                // SAFETY: We have mutable access to `data` and it is aligned.
-                (value_ptr as *mut T).write(value);
-            }
-
-            value_ptr as *mut ()
+    pub fn add<T: 'a>(&self, value: T) {
+        if let Some(inner) = self.inner.try_read() {
+            inner.add(value);
         } else {
-            align as *mut ()
-        };
+            // Just drop the value if the bin is being cleared.
+        }
 
-        let destructor: Destructor = unsafe {
-            // SAFETY: `*mut T` can be soundly transmuted to `*mut ()`, and so `fn(*mut T)` can be
-            // soundly transmuted to `fn(*mut ())`
-            mem::transmute(ptr::drop_in_place::<T> as unsafe fn(*mut T))
-        };
-
-        self.destructors.push((value_ptr, destructor));
+        self.try_clear();
     }
 
     /// Clear the bin.
-    pub fn clear(&mut self) {
-        for (value, destructor) in self.destructors.drain(..) {
-            unsafe {
-                // SAFETY: `self.destructors` contains valid indices into `self.data`.
-                // We use pointer arithmetic instead of indexing to avoid panicking when we drop
-                // ZSTs (which are represented as an index 0).
-                destructor(value as *mut ())
-            }
-        }
+    ///
+    /// This may not clear the bin immediately if another thread is currently adding a value to the
+    /// bin.
+    pub fn clear(&self) {
+        self.clear.store(true, atomic::Ordering::Relaxed);
 
-        for storage in &mut self.data {
-            storage.clear();
+        self.try_clear();
+    }
+
+    /// Attempt to the clear the bin.
+    fn try_clear(&self) {
+        if self.clear.load(atomic::Ordering::Relaxed) {
+            if let Some(mut inner) = self.inner.try_write() {
+                self.clear.store(false, atomic::Ordering::Relaxed);
+                inner.clear();
+            }
         }
     }
 
     /// Get the size of the bin in bytes.
     #[must_use]
     pub fn size(&self) -> usize {
-        self.data.iter().map(Vec::len).sum()
+        self.inner
+            .try_read()
+            .map_or(0, |inner| inner.size())
     }
 }
 
 impl<'a> Drop for Bin<'a> {
     fn drop(&mut self) {
-        self.clear();
+        self.inner.get_mut().clear();
     }
 }
 
-unsafe impl<'a> Send for Bin<'a> {}
-unsafe impl<'a> Sync for Bin<'a> {}
-
 #[test]
-fn test_bin() {
-    use std::cell::Cell;
+fn test_clear() {
+    let destructor_called = std::cell::Cell::new(false);
 
-    #[cfg(test)]
-    struct CallOnDrop<T: FnMut()>(T);
-    #[cfg(test)]
-    impl<T: FnMut()> Drop for CallOnDrop<T> {
-        fn drop(&mut self) {
-            self.0();
-        }
-    }
+    let bin = Bin::new();
 
-    let destructor_called = Cell::new(false);
-
-    let mut bin = Bin::new();
-    assert!(bin.destructors.is_empty());
-    assert!(bin.data.is_empty());
-
-    let val = CallOnDrop(|| destructor_called.set(true));
-    bin.add(val);
-    assert_eq!(bin.destructors.len(), 1);
-    assert!(!destructor_called.get());
-
-    bin.add(253_u8);
-    assert_eq!(bin.destructors.len(), 2);
-    assert_eq!(unsafe { *(bin.destructors[1].0 as *const u8) }, 253);
-
-    bin.add(Box::new(6));
-    assert_eq!(bin.destructors.len(), 3);
+    bin.add(CallOnDrop(|| destructor_called.set(true)));
     assert!(!destructor_called.get());
 
     bin.clear();
-
     assert!(destructor_called.get());
-
-    bin.clear();
 }
 
+#[cfg(test)]
+fn assert_thread_safe<T: Send + Sync>() {}
+
 #[test]
-fn test_bin_zsts() {
-    use std::marker::PhantomData;
+fn test_thread_safe() {
+    assert_thread_safe::<Bin<'_>>();
+}
 
-    let mut bin = Bin::new();
-
-    bin.add(());
-    bin.add(());
-    bin.add(PhantomData::<()>);
-    bin.add(PhantomData::<Vec<i64>>);
-
-    bin.clear();
+#[cfg(test)]
+struct CallOnDrop<T: FnMut()>(T);
+#[cfg(test)]
+impl<T: FnMut()> Drop for CallOnDrop<T> {
+    fn drop(&mut self) {
+        self.0();
+    }
 }
