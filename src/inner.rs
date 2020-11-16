@@ -44,7 +44,7 @@ impl<'a> Inner<'a> {
     }
 
     /// Add the given value to the bin.
-    pub(crate) fn add<T: 'a>(&self, value: T) {
+    pub(crate) fn add<T: Send + 'a>(&self, value: T) {
         let value_ptr = match self.store(value) {
             Some(value_ptr) => value_ptr,
             None => return,
@@ -62,7 +62,7 @@ impl<'a> Inner<'a> {
     /// Store the given value in the bin.
     ///
     /// Returns a pointer to the value, or `None` if it failed.
-    fn store<T>(&self, value: T) -> Option<*mut T> {
+    fn store<T: Send + 'a>(&self, value: T) -> Option<*mut T> {
         let size = mem::size_of::<T>();
         let align = mem::align_of::<T>();
 
@@ -115,7 +115,7 @@ impl<'a> Inner<'a> {
     /// Add a storage that contains the given value.
     ///
     /// Returns a pointer to the value, or `None` if it failed.
-    fn add_storage<T>(&self, value: T) -> Option<*mut T> {
+    fn add_storage<T: Send + 'a>(&self, value: T) -> Option<*mut T> {
         let size = mem::size_of::<T>();
         let align = mem::align_of::<T>();
 
@@ -177,16 +177,18 @@ impl<'a> Inner<'a> {
 
 #[test]
 fn test_bin() {
-    let destructor_called = std::cell::Cell::new(false);
+    use std::sync::atomic::Ordering::SeqCst;
+
+    let destructor_called = std::sync::atomic::AtomicBool::new(false);
 
     let mut bin = Inner::new();
     assert!(bin.destructors.is_empty());
     assert!(bin.data.is_empty());
 
-    let val = crate::CallOnDrop(|| destructor_called.set(true));
+    let val = crate::CallOnDrop(|| assert!(!destructor_called.swap(true, SeqCst)));
     bin.add(val);
     assert_eq!(bin.destructors.len(), 1);
-    assert!(!destructor_called.get());
+    assert!(!destructor_called.load(SeqCst));
 
     bin.add(253_u16);
     assert_eq!(bin.destructors.len(), 2);
@@ -197,11 +199,11 @@ fn test_bin() {
 
     bin.add(Box::new(6));
     assert_eq!(bin.destructors.len(), 3);
-    assert!(!destructor_called.get());
+    assert!(!destructor_called.load(SeqCst));
 
     bin.clear();
 
-    assert!(destructor_called.get());
+    assert!(destructor_called.load(SeqCst));
 
     bin.clear();
 }

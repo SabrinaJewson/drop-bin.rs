@@ -61,7 +61,7 @@ impl<'a> Bin<'a> {
     }
 
     /// Add a value to the bin.
-    pub fn add<T: 'a>(&self, value: T) {
+    pub fn add<T: Send + 'a>(&self, value: T) {
         if let Some(inner) = self.inner.try_read() {
             inner.add(value);
         } else {
@@ -106,15 +106,19 @@ impl<'a> Drop for Bin<'a> {
 
 #[test]
 fn test_clear() {
-    let destructor_called = std::cell::Cell::new(false);
+    use std::sync::atomic::Ordering::SeqCst;
+
+    let destructor_called = AtomicBool::new(false);
 
     let bin = Bin::new();
 
-    bin.add(CallOnDrop(|| destructor_called.set(true)));
-    assert!(!destructor_called.get());
+    bin.add(CallOnDrop(
+        || assert!(!destructor_called.swap(true, SeqCst)),
+    ));
+    assert!(!destructor_called.load(SeqCst));
 
     bin.clear();
-    assert!(destructor_called.get());
+    assert!(destructor_called.load(SeqCst));
 }
 
 #[cfg(test)]
