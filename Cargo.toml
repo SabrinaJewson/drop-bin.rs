@@ -1,6 +1,6 @@
 [package]
 name = "drop-bin"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["KaiJewson <kai.jewson@gmail.com>"]
 edition = "2018"
 description = "Defer running expensive destructors until later"
@@ -19,5 +19,5 @@ name = "drop_expensive"
 harness = false
 
 [dependencies]
-try-mutex = "0.2.0"
+try-mutex = "0.3.0"
 try-rwlock = "0.1.0"
