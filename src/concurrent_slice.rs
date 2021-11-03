@@ -141,9 +141,9 @@ fn test_push() {
     let v3 = slice.push("3".to_owned()).unwrap();
     assert_eq!(slice.push(String::new()), Err(String::new()));
 
-    v1.push_str("x");
-    v2.push_str("y");
-    v3.push_str("z");
+    v1.push('x');
+    v2.push('y');
+    v3.push('z');
 
     assert_eq!(slice.into_iter().collect::<Vec<_>>(), ["1x", "2y", "3z"]);
 }

@@ -56,7 +56,7 @@ impl<'a> Inner<'a> {
             mem::transmute(ptr::drop_in_place::<T> as unsafe fn(*mut T))
         };
 
-        self.destructors.push((value_ptr as *mut (), destructor));
+        self.destructors.push((value_ptr.cast::<()>(), destructor));
     }
 
     /// Store the given value in the bin.
@@ -71,29 +71,30 @@ impl<'a> Inner<'a> {
             if let Some((mut storage, value_start_index)) =
                 // Find a storage that has space for the value.
                 self.data.iter().find_map(|storage| {
-                // If the storage is being used, just ignore it. We could keep on looping until
-                // we've made sure that none of the storages have space for the value, but the
-                // cost is only a few bytes in some scenarios.
-                let storage = storage.bytes.try_lock()?;
+                        // If the storage is being used, just ignore it. We could keep on looping until
+                        // we've made sure that none of the storages have space for the value, but the
+                        // cost is only a few bytes in some scenarios.
+                        let storage = storage.bytes.try_lock()?;
 
-                let storage_end_ptr = storage.as_ptr() as usize + storage.len();
-                let padding = (align - storage_end_ptr % align) % align;
+                        let storage_end_ptr = storage.as_ptr() as usize + storage.len();
+                        let padding = (align - storage_end_ptr % align) % align;
 
-                let value_start_index = storage.len().checked_add(padding)?;
+                        let value_start_index = storage.len().checked_add(padding)?;
 
-                if value_start_index.checked_add(size)? <= storage.capacity() {
-                    Some((storage, value_start_index))
-                } else {
-                    None
-                }
-            }) {
+                        if value_start_index.checked_add(size)? <= storage.capacity() {
+                            Some((storage, value_start_index))
+                        } else {
+                            None
+                        }
+                    })
+            {
                 unsafe {
                     // SAFETY: We have checked that there is enough space to store
                     // `value_start_index + size` bytes, and the inner type is MaybeUninit.
                     storage.set_len(value_start_index + size);
                 }
 
-                let value_ptr = &mut storage[value_start_index] as *mut MaybeUninit<u8> as *mut T;
+                let value_ptr = <*mut MaybeUninit<u8>>::cast::<T>(&mut storage[value_start_index]);
                 unsafe {
                     // SAFETY: We have mutable access to `storage` and it is aligned.
                     value_ptr.write(value);
@@ -138,7 +139,7 @@ impl<'a> Inner<'a> {
             // type is MaybeUninit.
             bytes.set_len(value_start_index + size);
         }
-        let value_ptr = &mut bytes[value_start_index] as *mut MaybeUninit<u8> as *mut T;
+        let value_ptr = <*mut MaybeUninit<u8>>::cast::<T>(&mut bytes[value_start_index]);
         unsafe {
             // SAFETY: We have mutable access to `bytes` and it is aligned.
             value_ptr.write(value);
@@ -160,7 +161,7 @@ impl<'a> Inner<'a> {
                 // SAFETY: `self.destructors` contains valid indices into `self.data`.
                 // We use pointer arithmetic instead of indexing to avoid panicking when we drop
                 // ZSTs (which are represented as an index 0).
-                destructor(value as *mut ())
+                destructor(value.cast::<()>());
             }
         }
 

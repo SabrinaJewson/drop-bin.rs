@@ -80,7 +80,7 @@ fn test() {
         .collect::<Vec<_>>();
 
     for value in &mut values {
-        value.push_str("x");
+        value.push('x');
     }
 
     let required = ["4x", "3x", "2x", "1x", "0x"];
