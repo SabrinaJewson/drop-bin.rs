@@ -23,8 +23,8 @@
     unused_qualifications
 )]
 
-use std::sync::atomic::{self, AtomicBool};
-
+use std::sync::atomic;
+use std::sync::atomic::AtomicBool;
 use try_rwlock::TryRwLock;
 
 mod concurrent_list;

@@ -1,7 +1,10 @@
 use std::cell::UnsafeCell;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::mem::MaybeUninit;
-use std::sync::atomic::{self, AtomicUsize};
+use std::sync::atomic;
+use std::sync::atomic::AtomicUsize;
 
 /// A concurrent append-only boxed slice.
 pub struct ConcurrentSlice<T> {

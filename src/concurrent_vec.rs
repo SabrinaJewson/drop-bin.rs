@@ -1,4 +1,5 @@
-use crate::{ConcurrentList, ConcurrentSlice};
+use crate::ConcurrentList;
+use crate::ConcurrentSlice;
 
 /// A concurrent append-only vector built from a `ConcurrentList<ConcurrentSlice<T>>`.
 #[derive(Debug)]

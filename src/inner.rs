@@ -1,11 +1,11 @@
+use crate::ConcurrentList;
+use crate::ConcurrentVec;
 use std::cmp::max;
 use std::marker::PhantomData;
-use std::mem::{self, MaybeUninit};
+use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
-
 use try_mutex::TryMutex;
-
-use crate::{ConcurrentList, ConcurrentVec};
 
 type Destructor = unsafe fn(*mut ());
 

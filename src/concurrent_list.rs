@@ -1,6 +1,9 @@
-use std::fmt::{self, Debug, Formatter};
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::ptr;
-use std::sync::atomic::{self, AtomicPtr};
+use std::sync::atomic;
+use std::sync::atomic::AtomicPtr;
 
 /// A concurrent insert-only linked list.
 pub(crate) struct ConcurrentList<T> {
