@@ -20,7 +20,8 @@
     clippy::pedantic,
     rust_2018_idioms,
     missing_docs,
-    unused_qualifications
+    unused_qualifications,
+    unsafe_op_in_unsafe_fn
 )]
 
 use std::sync::atomic;

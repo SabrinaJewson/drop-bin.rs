@@ -18,7 +18,7 @@ pub(crate) struct Inner<'a> {
     destructors: ConcurrentVec<(*mut (), Destructor)>,
     /// The linked list of backing storage behind the pointers in `destructors`.
     data: ConcurrentList<Storage>,
-    invariant_over_lifetime_a: PhantomData<&'a mut &'a ()>,
+    invariant_over_lifetime_a: PhantomData<fn(&'a ()) -> &'a ()>,
 }
 
 /// A segment of backing storage.
@@ -32,15 +32,12 @@ struct Storage {
 }
 
 impl<'a> Inner<'a> {
-    // Associated constant as fn pointers and mutable refs aren't allowed in const fn
-    #[allow(clippy::declare_interior_mutable_const)]
-    const NEW: Self = Self {
-        destructors: ConcurrentVec::new(),
-        data: ConcurrentList::new(),
-        invariant_over_lifetime_a: PhantomData,
-    };
     pub(crate) const fn new() -> Self {
-        Self::NEW
+        Self {
+            destructors: ConcurrentVec::new(),
+            data: ConcurrentList::new(),
+            invariant_over_lifetime_a: PhantomData,
+        }
     }
 
     /// Add the given value to the bin.
@@ -53,7 +50,7 @@ impl<'a> Inner<'a> {
         let destructor: Destructor = unsafe {
             // SAFETY: `*mut T` can be soundly transmuted to `*mut ()`, and so `fn(*mut T)` can be
             // soundly transmuted to `fn(*mut ())`
-            mem::transmute(ptr::drop_in_place::<T> as unsafe fn(*mut T))
+            mem::transmute::<unsafe fn(*mut T), fn(*mut ())>(ptr::drop_in_place::<T>)
         };
 
         self.destructors.push((value_ptr.cast::<()>(), destructor));
@@ -202,7 +199,7 @@ mod tests {
         bin.add(253_u16);
         assert_eq!(bin.destructors.len(), 2);
         assert_eq!(
-            unsafe { *(bin.destructors.iter_mut().next().unwrap().0 as *const u16) },
+            unsafe { *(bin.destructors.iter_assume_init_mut().next().unwrap().0 as *const u16) },
             253
         );
 

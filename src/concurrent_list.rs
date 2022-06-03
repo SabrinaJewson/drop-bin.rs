@@ -26,7 +26,7 @@ impl<T> ConcurrentList<T> {
     }
 
     fn head_node(&self) -> Option<&Node<T>> {
-        let head = self.head.load(atomic::Ordering::Relaxed);
+        let head = self.head.load(atomic::Ordering::Acquire);
 
         if head.is_null() {
             None
@@ -54,7 +54,7 @@ impl<T> ConcurrentList<T> {
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &T> + '_ {
-        let mut node = self.head.load(atomic::Ordering::Relaxed);
+        let mut node = self.head.load(atomic::Ordering::Acquire);
 
         std::iter::from_fn(move || {
             if node.is_null() {

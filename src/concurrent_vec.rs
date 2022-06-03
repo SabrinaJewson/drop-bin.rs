@@ -16,29 +16,28 @@ impl<T> ConcurrentVec<T> {
 
     // This is safe because this container cannot be immutably iterated over
     #[allow(clippy::mut_from_ref)]
-    pub(crate) fn push(&self, value: T) -> &mut T {
-        match self.data.head() {
-            Some(head) => Ok((head, value)),
-            None => Err(value),
-        }
-        .and_then(|(head, value)| head.push(value))
-        .unwrap_or_else(|value| {
+    pub(crate) fn push(&self, mut value: T) -> &mut T {
+        loop {
+            if let Some(head) = self.data.head() {
+                match head.push(value) {
+                    Ok(r) => break r,
+                    Err(value_returned) => value = value_returned,
+                }
+            }
+
             let slice = ConcurrentSlice::new(self.data.head().map_or(4, |head| {
                 let capacity = head.capacity();
                 capacity.checked_mul(2).unwrap_or(capacity)
             }));
-            match self.data.push(slice).push(value) {
-                Ok(value) => value,
-                Err(_) => unreachable!(),
-            }
-        })
+            self.data.push(slice);
+        }
     }
 
     #[cfg(test)]
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> + '_ {
+    pub(crate) unsafe fn iter_assume_init_mut(&mut self) -> impl Iterator<Item = &mut T> + '_ {
         self.data
             .iter_mut()
-            .flat_map(|slice| slice.iter_mut().rev())
+            .flat_map(|slice| unsafe { slice.iter_assume_init_mut() }.rev())
     }
 
     pub(crate) fn into_iter(self) -> impl Iterator<Item = T> {
@@ -91,7 +90,12 @@ mod tests {
 
         let required = ["4x", "3x", "2x", "1x", "0x"];
 
-        assert_eq!(vec.iter_mut().map(|v| &**v).collect::<Vec<_>>(), required);
+        assert_eq!(
+            unsafe { vec.iter_assume_init_mut() }
+                .map(|v| &**v)
+                .collect::<Vec<_>>(),
+            required
+        );
         assert_eq!(vec.into_iter().collect::<Vec<_>>(), required);
     }
 

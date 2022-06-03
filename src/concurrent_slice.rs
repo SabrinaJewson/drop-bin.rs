@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
+use std::mem;
 use std::mem::MaybeUninit;
 use std::sync::atomic;
 use std::sync::atomic::AtomicUsize;
@@ -33,7 +34,8 @@ impl<T> ConcurrentSlice<T> {
     // This is safe because this container cannot be immutably iterated over
     pub(crate) fn push(&self, value: T) -> Result<&mut T, T> {
         let old_len = match self.len.fetch_update(
-            atomic::Ordering::Acquire,
+            // Only use `Relaxed` because this atomic carries no data dependencies.
+            atomic::Ordering::Relaxed,
             atomic::Ordering::Relaxed,
             |len| {
                 if len == self.capacity() {
@@ -59,10 +61,12 @@ impl<T> ConcurrentSlice<T> {
     ) -> impl Iterator<Item = &mut MaybeUninit<T>> + DoubleEndedIterator + '_ {
         self.data[..*self.len.get_mut()]
             .iter_mut()
-            .map(|cell| cell_get_mut(cell))
+            .map(UnsafeCell::get_mut)
     }
     #[cfg(test)]
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> + DoubleEndedIterator + '_ {
+    pub(crate) unsafe fn iter_assume_init_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut T> + DoubleEndedIterator + '_ {
         self.iter_maybe_uninit_mut()
             .map(|val| unsafe { &mut *val.as_mut_ptr() })
     }
@@ -71,14 +75,14 @@ impl<T> ConcurrentSlice<T> {
         *self.len.get_mut() = 0;
 
         self.data[..old_len].iter_mut().map(|cell| {
-            let value = std::mem::replace(cell_get_mut(cell), MaybeUninit::uninit());
+            let value = mem::replace(cell.get_mut(), MaybeUninit::uninit());
             unsafe { value.assume_init() }
         })
     }
     pub(crate) fn into_iter(mut self) -> impl Iterator<Item = T> + DoubleEndedIterator {
-        let data = std::mem::replace(&mut self.data, Vec::new().into_boxed_slice());
+        let data = mem::replace(&mut self.data, Vec::new().into_boxed_slice());
         let len = *self.len.get_mut();
-        std::mem::forget(self);
+        mem::forget(self);
 
         Vec::from(data).into_iter().take(len).map(|cell| {
             let value = cell.into_inner();
@@ -89,10 +93,6 @@ impl<T> ConcurrentSlice<T> {
     pub(crate) fn clear(&mut self) {
         self.drain().for_each(drop);
     }
-}
-
-fn cell_get_mut<T>(cell: &mut UnsafeCell<T>) -> &mut T {
-    unsafe { &mut *cell.get() }
 }
 
 impl<T> Debug for ConcurrentSlice<T> {
@@ -139,7 +139,9 @@ mod tests {
         assert_eq!(slice.push("4".to_owned()), Err("4".to_owned()));
 
         assert_eq!(
-            slice.iter_mut().map(|x| &**x).collect::<Vec<_>>(),
+            unsafe { slice.iter_assume_init_mut() }
+                .map(|x| &**x)
+                .collect::<Vec<_>>(),
             ["1", "2", "3"]
         );
         assert_eq!(slice.drain().collect::<Vec<_>>(), ["1", "2", "3"]);
