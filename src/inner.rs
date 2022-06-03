@@ -176,74 +176,80 @@ impl<'a> Inner<'a> {
     }
 }
 
-#[test]
-fn test_bin() {
-    use std::sync::atomic::Ordering::SeqCst;
-
-    let destructor_called = std::sync::atomic::AtomicBool::new(false);
-
-    let mut bin = Inner::new();
-    assert!(bin.destructors.is_empty());
-    assert!(bin.data.is_empty());
-
-    let val = crate::CallOnDrop(|| assert!(!destructor_called.swap(true, SeqCst)));
-    bin.add(val);
-    assert_eq!(bin.destructors.len(), 1);
-    assert!(!destructor_called.load(SeqCst));
-
-    bin.add(253_u16);
-    assert_eq!(bin.destructors.len(), 2);
-    assert_eq!(
-        unsafe { *(bin.destructors.iter_mut().next().unwrap().0 as *const u16) },
-        253
-    );
-
-    bin.add(Box::new(6));
-    assert_eq!(bin.destructors.len(), 3);
-    assert!(!destructor_called.load(SeqCst));
-
-    bin.clear();
-
-    assert!(destructor_called.load(SeqCst));
-
-    bin.clear();
-}
-
-#[test]
-fn test_bin_zsts() {
+#[cfg(test)]
+mod tests {
+    use crate::inner::Inner;
+    use crate::test_util::assert_thread_safe;
+    use crate::test_util::CallOnDrop;
     use std::cell::Cell;
     use std::marker::PhantomData;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering::SeqCst;
 
-    thread_local! {
-        static DESTRUCTOR_CALLED: Cell<bool> = Cell::new(false);
+    #[test]
+    fn bin() {
+        let destructor_called = AtomicBool::new(false);
+
+        let mut bin = Inner::new();
+        assert!(bin.destructors.is_empty());
+        assert!(bin.data.is_empty());
+
+        let val = CallOnDrop(|| assert!(!destructor_called.swap(true, SeqCst)));
+        bin.add(val);
+        assert_eq!(bin.destructors.len(), 1);
+        assert!(!destructor_called.load(SeqCst));
+
+        bin.add(253_u16);
+        assert_eq!(bin.destructors.len(), 2);
+        assert_eq!(
+            unsafe { *(bin.destructors.iter_mut().next().unwrap().0 as *const u16) },
+            253
+        );
+
+        bin.add(Box::new(6));
+        assert_eq!(bin.destructors.len(), 3);
+        assert!(!destructor_called.load(SeqCst));
+
+        bin.clear();
+
+        assert!(destructor_called.load(SeqCst));
+
+        bin.clear();
     }
 
-    struct Zst;
-    impl Drop for Zst {
-        fn drop(&mut self) {
-            assert!(!DESTRUCTOR_CALLED.with(Cell::get));
-            DESTRUCTOR_CALLED.with(|cell| cell.set(true));
+    #[test]
+    fn bin_zsts() {
+        thread_local! {
+            static DESTRUCTOR_CALLED: Cell<bool> = Cell::new(false);
         }
+
+        struct Zst;
+        impl Drop for Zst {
+            fn drop(&mut self) {
+                assert!(!DESTRUCTOR_CALLED.with(Cell::get));
+                DESTRUCTOR_CALLED.with(|cell| cell.set(true));
+            }
+        }
+
+        let mut bin = Inner::new();
+
+        bin.add(());
+        bin.add(());
+        bin.add(PhantomData::<()>);
+        bin.add(PhantomData::<Vec<i64>>);
+        bin.add(Zst);
+
+        assert!(!DESTRUCTOR_CALLED.with(Cell::get));
+
+        bin.clear();
+
+        assert!(DESTRUCTOR_CALLED.with(Cell::get));
+
+        DESTRUCTOR_CALLED.with(|cell| cell.set(false));
     }
 
-    let mut bin = Inner::new();
-
-    bin.add(());
-    bin.add(());
-    bin.add(PhantomData::<()>);
-    bin.add(PhantomData::<Vec<i64>>);
-    bin.add(Zst);
-
-    assert!(!DESTRUCTOR_CALLED.with(Cell::get));
-
-    bin.clear();
-
-    assert!(DESTRUCTOR_CALLED.with(Cell::get));
-
-    DESTRUCTOR_CALLED.with(|cell| cell.set(false));
-}
-
-#[test]
-fn test_thread_safe() {
-    crate::assert_thread_safe::<Inner<'_>>();
+    #[test]
+    fn thread_safe() {
+        assert_thread_safe::<Inner<'_>>();
+    }
 }

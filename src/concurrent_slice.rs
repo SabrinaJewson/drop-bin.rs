@@ -110,45 +110,51 @@ impl<T> Drop for ConcurrentSlice<T> {
 unsafe impl<T: Send> Send for ConcurrentSlice<T> {}
 unsafe impl<T: Send + Sync> Sync for ConcurrentSlice<T> {}
 
-#[test]
-fn test_empty() {
-    let mut slice = ConcurrentSlice::new(0);
+#[cfg(test)]
+mod tests {
+    use crate::concurrent_slice::ConcurrentSlice;
+    use crate::test_util::assert_thread_safe;
 
-    assert_eq!(slice.capacity(), 0);
-    assert_eq!(slice.len(), 0);
-    assert_eq!(slice.push(1), Err(1));
-    slice.clear();
-}
+    #[test]
+    fn empty() {
+        let mut slice = ConcurrentSlice::new(0);
 
-#[test]
-fn test_push() {
-    let mut slice = ConcurrentSlice::new(3);
-    assert_eq!(slice.capacity(), 3);
+        assert_eq!(slice.capacity(), 0);
+        assert_eq!(slice.len(), 0);
+        assert_eq!(slice.push(1), Err(1));
+        slice.clear();
+    }
 
-    assert_eq!(slice.push("1".to_owned()).unwrap(), "1");
-    assert_eq!(slice.push("2".to_owned()).unwrap(), "2");
-    assert_eq!(slice.push("3".to_owned()).unwrap(), "3");
-    assert_eq!(slice.push("4".to_owned()), Err("4".to_owned()));
+    #[test]
+    fn push() {
+        let mut slice = ConcurrentSlice::new(3);
+        assert_eq!(slice.capacity(), 3);
 
-    assert_eq!(
-        slice.iter_mut().map(|x| &**x).collect::<Vec<_>>(),
-        ["1", "2", "3"]
-    );
-    assert_eq!(slice.drain().collect::<Vec<_>>(), ["1", "2", "3"]);
+        assert_eq!(slice.push("1".to_owned()).unwrap(), "1");
+        assert_eq!(slice.push("2".to_owned()).unwrap(), "2");
+        assert_eq!(slice.push("3".to_owned()).unwrap(), "3");
+        assert_eq!(slice.push("4".to_owned()), Err("4".to_owned()));
 
-    let v1 = slice.push("1".to_owned()).unwrap();
-    let v2 = slice.push("2".to_owned()).unwrap();
-    let v3 = slice.push("3".to_owned()).unwrap();
-    assert_eq!(slice.push(String::new()), Err(String::new()));
+        assert_eq!(
+            slice.iter_mut().map(|x| &**x).collect::<Vec<_>>(),
+            ["1", "2", "3"]
+        );
+        assert_eq!(slice.drain().collect::<Vec<_>>(), ["1", "2", "3"]);
 
-    v1.push('x');
-    v2.push('y');
-    v3.push('z');
+        let v1 = slice.push("1".to_owned()).unwrap();
+        let v2 = slice.push("2".to_owned()).unwrap();
+        let v3 = slice.push("3".to_owned()).unwrap();
+        assert_eq!(slice.push(String::new()), Err(String::new()));
 
-    assert_eq!(slice.into_iter().collect::<Vec<_>>(), ["1x", "2y", "3z"]);
-}
+        v1.push('x');
+        v2.push('y');
+        v3.push('z');
 
-#[test]
-fn test_thread_safe() {
-    crate::assert_thread_safe::<ConcurrentSlice<()>>();
+        assert_eq!(slice.into_iter().collect::<Vec<_>>(), ["1x", "2y", "3z"]);
+    }
+
+    #[test]
+    fn thread_safe() {
+        assert_thread_safe::<ConcurrentSlice<()>>();
+    }
 }

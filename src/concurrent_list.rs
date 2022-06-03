@@ -147,67 +147,74 @@ impl<T> Drop for ConcurrentList<T> {
     }
 }
 
-#[test]
-fn test_null() {
-    let mut list: ConcurrentList<()> = ConcurrentList::new();
-    assert_eq!(*list.head.get_mut(), ptr::null_mut());
-    assert_eq!(list.head(), None);
-    assert_eq!(list.head_mut(), None);
-    assert_eq!(list.iter().next(), None);
-    assert_eq!(list.iter_mut().next(), None);
-    assert_eq!(list.len(), 0);
-    assert!(list.is_empty());
-}
+#[cfg(test)]
+mod tests {
+    use crate::concurrent_list::ConcurrentList;
+    use crate::test_util::assert_thread_safe;
+    use std::ptr;
 
-#[test]
-fn test_push() {
-    let list = ConcurrentList::new();
+    #[test]
+    fn null() {
+        let mut list: ConcurrentList<()> = ConcurrentList::new();
+        assert_eq!(*list.head.get_mut(), ptr::null_mut());
+        assert_eq!(list.head(), None);
+        assert_eq!(list.head_mut(), None);
+        assert_eq!(list.iter().next(), None);
+        assert_eq!(list.iter_mut().next(), None);
+        assert_eq!(list.len(), 0);
+        assert!(list.is_empty());
+    }
 
-    let r = list.push("Hello World".to_owned());
-    assert_eq!(r, "Hello World");
+    #[test]
+    fn push() {
+        let list = ConcurrentList::new();
 
-    assert_eq!(list.head().unwrap() as *const String, r as *const String);
-    assert_eq!(
-        list.iter().map(|x| x as *const String).collect::<Vec<_>>(),
-        [r as *const String]
-    );
+        let r = list.push("Hello World".to_owned());
+        assert_eq!(r, "Hello World");
 
-    let r2 = list.push("Foo".to_owned());
-    assert_eq!(r, "Hello World");
-    assert_eq!(r2, "Foo");
+        assert_eq!(list.head().unwrap() as *const String, r as *const String);
+        assert_eq!(
+            list.iter().map(|x| x as *const String).collect::<Vec<_>>(),
+            [r as *const String]
+        );
 
-    assert_eq!(list.head().unwrap() as *const String, r2 as *const String);
-    assert_eq!(
-        list.iter().map(|x| x as *const String).collect::<Vec<_>>(),
-        [r2 as *const String, r as *const String]
-    );
+        let r2 = list.push("Foo".to_owned());
+        assert_eq!(r, "Hello World");
+        assert_eq!(r2, "Foo");
 
-    assert_eq!(list.into_iter().collect::<Vec<_>>(), ["Foo", "Hello World"]);
-}
+        assert_eq!(list.head().unwrap() as *const String, r2 as *const String);
+        assert_eq!(
+            list.iter().map(|x| x as *const String).collect::<Vec<_>>(),
+            [r2 as *const String, r as *const String]
+        );
 
-#[test]
-fn test_pop() {
-    let mut list = ConcurrentList::new();
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), ["Foo", "Hello World"]);
+    }
 
-    list.push("1".to_owned());
-    list.push("2".to_owned());
-    list.push("3".to_owned());
+    #[test]
+    fn pop() {
+        let mut list = ConcurrentList::new();
 
-    assert_eq!(list.pop().unwrap(), "3");
-    assert_eq!(list.pop().unwrap(), "2");
-    assert_eq!(list.pop().unwrap(), "1");
-    assert_eq!(list.pop(), None);
+        list.push("1".to_owned());
+        list.push("2".to_owned());
+        list.push("3".to_owned());
 
-    list.push("1".to_owned());
-    list.push("2".to_owned());
-    list.push("3".to_owned());
+        assert_eq!(list.pop().unwrap(), "3");
+        assert_eq!(list.pop().unwrap(), "2");
+        assert_eq!(list.pop().unwrap(), "1");
+        assert_eq!(list.pop(), None);
 
-    let mut iter = list.into_iter();
-    assert_eq!(iter.next().unwrap(), "3");
-    drop(iter);
-}
+        list.push("1".to_owned());
+        list.push("2".to_owned());
+        list.push("3".to_owned());
 
-#[test]
-fn test_thread_safe() {
-    crate::assert_thread_safe::<ConcurrentList<()>>();
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next().unwrap(), "3");
+        drop(iter);
+    }
+
+    #[test]
+    fn thread_safe() {
+        assert_thread_safe::<ConcurrentList<()>>();
+    }
 }

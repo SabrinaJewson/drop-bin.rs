@@ -63,33 +63,39 @@ impl<T> Default for ConcurrentVec<T> {
     }
 }
 
-#[test]
-fn test() {
-    let mut vec = ConcurrentVec::new();
-    assert_eq!(vec.len(), 0);
-    assert!(vec.is_empty());
+#[cfg(test)]
+mod tests {
+    use crate::concurrent_vec::ConcurrentVec;
+    use crate::test_util::assert_thread_safe;
 
-    let mut values = (0..5)
-        .map(|n| {
-            assert_eq!(vec.len(), n);
-            let r = vec.push(n.to_string());
-            assert_eq!(vec.len(), n + 1);
-            assert!(!vec.is_empty());
-            r
-        })
-        .collect::<Vec<_>>();
+    #[test]
+    fn test() {
+        let mut vec = ConcurrentVec::new();
+        assert_eq!(vec.len(), 0);
+        assert!(vec.is_empty());
 
-    for value in &mut values {
-        value.push('x');
+        let mut values = (0..5)
+            .map(|n| {
+                assert_eq!(vec.len(), n);
+                let r = vec.push(n.to_string());
+                assert_eq!(vec.len(), n + 1);
+                assert!(!vec.is_empty());
+                r
+            })
+            .collect::<Vec<_>>();
+
+        for value in &mut values {
+            value.push('x');
+        }
+
+        let required = ["4x", "3x", "2x", "1x", "0x"];
+
+        assert_eq!(vec.iter_mut().map(|v| &**v).collect::<Vec<_>>(), required);
+        assert_eq!(vec.into_iter().collect::<Vec<_>>(), required);
     }
 
-    let required = ["4x", "3x", "2x", "1x", "0x"];
-
-    assert_eq!(vec.iter_mut().map(|v| &**v).collect::<Vec<_>>(), required);
-    assert_eq!(vec.into_iter().collect::<Vec<_>>(), required);
-}
-
-#[test]
-fn test_thread_safe() {
-    crate::assert_thread_safe::<ConcurrentVec<()>>();
+    #[test]
+    fn thread_safe() {
+        assert_thread_safe::<ConcurrentVec<()>>();
+    }
 }

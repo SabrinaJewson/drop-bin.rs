@@ -107,36 +107,44 @@ impl<'a> Drop for Bin<'a> {
     }
 }
 
-#[test]
-fn test_clear() {
+#[cfg(test)]
+mod tests {
+    use crate::test_util::assert_thread_safe;
+    use crate::test_util::CallOnDrop;
+    use crate::Bin;
+    use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering::SeqCst;
 
-    let destructor_called = AtomicBool::new(false);
+    #[test]
+    fn clear() {
+        let destructor_called = AtomicBool::new(false);
 
-    let bin = Bin::new();
+        let bin = Bin::new();
 
-    bin.add(CallOnDrop(
-        || assert!(!destructor_called.swap(true, SeqCst)),
-    ));
-    assert!(!destructor_called.load(SeqCst));
+        bin.add(CallOnDrop(
+            || assert!(!destructor_called.swap(true, SeqCst)),
+        ));
+        assert!(!destructor_called.load(SeqCst));
 
-    bin.clear();
-    assert!(destructor_called.load(SeqCst));
+        bin.clear();
+        assert!(destructor_called.load(SeqCst));
+    }
+
+    #[test]
+    #[allow(clippy::extra_unused_lifetimes)]
+    fn thread_safe<'a>() {
+        assert_thread_safe::<Bin<'a>>();
+    }
 }
 
 #[cfg(test)]
-fn assert_thread_safe<T: Send + Sync>() {}
+mod test_util {
+    pub(crate) fn assert_thread_safe<T: Send + Sync>() {}
 
-#[test]
-fn test_thread_safe() {
-    assert_thread_safe::<Bin<'_>>();
-}
-
-#[cfg(test)]
-struct CallOnDrop<T: FnMut()>(T);
-#[cfg(test)]
-impl<T: FnMut()> Drop for CallOnDrop<T> {
-    fn drop(&mut self) {
-        self.0();
+    pub(crate) struct CallOnDrop<T: FnMut()>(pub(crate) T);
+    impl<T: FnMut()> Drop for CallOnDrop<T> {
+        fn drop(&mut self) {
+            self.0();
+        }
     }
 }
