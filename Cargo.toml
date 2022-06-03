@@ -1,9 +1,8 @@
 [package]
 name = "drop-bin"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Defer running expensive destructors until later"
-readme = "README.md"
 repository = "https://github.com/SabrinaJewson/drop-bin.rs"
 license = "MIT OR Apache-2.0"
 keywords = ["drop", "destructor"]
