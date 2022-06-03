@@ -39,9 +39,9 @@ use concurrent_vec::ConcurrentVec;
 mod inner;
 use inner::Inner;
 
-/// A bin.
+/// A container that holds values for later destruction.
 ///
-/// It is cleared when it is dropped.
+/// It is automatically cleared when it is dropped.
 #[derive(Debug, Default)]
 pub struct Bin<'a> {
     /// The inner data of the bin. If this is locked for writing, the bin is being cleared.
@@ -61,6 +61,9 @@ impl<'a> Bin<'a> {
     }
 
     /// Add a value to the bin.
+    ///
+    /// This may drop the value immediately, but will attempt to store it so that it can be dropped
+    /// later.
     pub fn add<T: Send + 'a>(&self, value: T) {
         if let Some(inner) = self.inner.try_read() {
             inner.add(value);
@@ -71,7 +74,7 @@ impl<'a> Bin<'a> {
         self.try_clear();
     }
 
-    /// Clear the bin.
+    /// Clear the bin, dropping all values that have been previously added to it.
     ///
     /// This may not clear the bin immediately if another thread is currently adding a value to the
     /// bin.
